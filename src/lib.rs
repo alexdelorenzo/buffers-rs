@@ -2,7 +2,7 @@
 #![feature(trait_alias)]
 use std::io::{self, Write, Read, Seek, SeekFrom, Bytes};
 use std::io::{Error as IoError};
-use std::iter::repeat;
+// use std::iter::repeat;
 // use std::error::Error;
 
 use tempfile::{SpooledTempFile};
@@ -71,8 +71,8 @@ impl<T, E> StreamBuffer<T, E, FileType> {
         StreamBuffer {
             size,
             stream,
+            file,
             index: START_INDEX,
-            file: file,
         }
     }
 }
@@ -88,8 +88,8 @@ impl<T, E, F: FileLike> BufferCreate<T, E, F> for StreamBuffer<T, E, F> {
         StreamBuffer {
             size,
             stream,
+            file,
             index: START_INDEX,
-            file: file,
         }
     }
 }
