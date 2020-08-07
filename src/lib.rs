@@ -2,7 +2,6 @@
 #![feature(trait_alias)]
 use std::io::{self, Write, Read, Seek, SeekFrom, Bytes};
 use std::io::{Error as IoError};
-// use std::iter::repeat;
 // use std::error::Error;
 
 use tempfile::{SpooledTempFile};
@@ -212,54 +211,60 @@ mod tests {
     use std::io::{Read, Bytes};
     use std::fs::File;
     use super::*;
+    use std::iter::repeat;
 
     const START: usize = 0;
+    const LEN: usize = 25;
+    const TEST_FILE: &str = "test.txt";
+    const BUF_SIZE: usize = 5;
 
     #[test]
     fn test_create() {
-        let mut file = File::open("test.txt").unwrap();
+        let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
         let mut stream_buffer = 
-          ByteStreamBuf::new(bytes, 25);
+          ByteStreamBuf::new(bytes, LEN);
     }
 
     #[test]
     fn test_chunk_from_0() {
-        let mut file = File::open("test.txt").unwrap();
+        let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
         let mut stream_buffer = 
-          StreamBuffer::new(bytes, 20);
+          StreamBuffer::new(bytes, LEN);
     
-        let result = stream_buffer.read(0, 5).unwrap();
+        let result = stream_buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
     }
+
     #[test]
     fn test_forward() {
-        let mut file = File::open("test.txt").unwrap();
+        let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
         let mut stream_buffer = 
-          StreamBuffer::new(bytes, 21);
+          StreamBuffer::new(bytes, LEN);
     
-        let result = stream_buffer.read(0, 5).unwrap();
+        let result = stream_buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
 
-        let result = stream_buffer.read(5, 5).unwrap();
+        let result = stream_buffer.read(5, BUF_SIZE).unwrap();
         assert_eq!(result, b"\n3\n4\n");
     }
+
     #[test]
     fn test_stutter() {
-        let mut file = File::open("test.txt").unwrap();
+        let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
         let mut stream_buffer = 
-          StreamBuffer::new(bytes, 21);
+          StreamBuffer::new(bytes, LEN);
     
-        let result = stream_buffer.read(0, 5).unwrap();
+        let result = stream_buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
-        assert_eq!(stream_buffer.index, 5);
+        assert_eq!(stream_buffer.index, BUF_SIZE);
 
         let slice =  b"2\n3\n";
         let result = stream_buffer.read(4, 4).unwrap();
@@ -285,71 +290,74 @@ mod tests {
     fn test_inject_file_dependency() {
         let temp = SpooledTempFile::new(MAX_SIZE);
 
-        let mut file = File::open("test.txt").unwrap();
+        let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
-        let mut buf = StreamBuffer::from_file(bytes, 21, temp);
-        test_forward();
+        let mut buf = StreamBuffer::from_file(bytes, LEN, temp);
+        // test_forward();
     }
+
     #[test]
     fn test_backward() {
-        let mut file = File::open("test.txt").unwrap();
+        let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
         let mut stream_buffer = 
-          StreamBuffer::new(bytes, 21);
+          StreamBuffer::new(bytes, LEN);
     
-        let result = stream_buffer.read(0, 5).unwrap();
+        let result = 
+            stream_buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
 
-        let result = stream_buffer.read(5, 5).unwrap();
+        let result = stream_buffer.read(5, BUF_SIZE).unwrap();
         assert_eq!(result, b"\n3\n4\n");
 
-        let result = stream_buffer.read(0, 5).unwrap();
+        let result = stream_buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
     }
+
     #[test]
     fn test_same_chunk_from_0() {
-        let mut file = File::open("test.txt").unwrap();
+        let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
         let mut stream_buffer = 
-            StreamBuffer::new(bytes, 21);
+            StreamBuffer::new(bytes, LEN);
     
-        let result = stream_buffer.read(0, 5).unwrap();
+        let result = stream_buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
 
-        let result = stream_buffer.read(0, 5).unwrap();
+        let result = stream_buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
     }
 
     #[test]
     fn test_forward_then_extend_from_0() {
-        let mut file = File::open("test.txt").unwrap();
+        let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
     
         let mut buffer = 
-            StreamBuffer::new(bytes, 21);
+            StreamBuffer::new(bytes, LEN);
     
-        let result = buffer.read(0, 5).unwrap();
+        let result = buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
     
-        let result = buffer.read(0, 5).unwrap();
+        let result = buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
 
-        let result = buffer.read(0, 10).unwrap();
+        let result = buffer.read(START, 10).unwrap();
         assert_eq!(result, b"0\n1\n2\n3\n4\n");
     }
 
     #[test]
     fn test_forward_skip_ahead() {
-        let mut file = File::open("test.txt").unwrap();
+        let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
     
         let mut buffer = 
-            StreamBuffer::new(bytes, 21);
+            StreamBuffer::new(bytes, LEN);
     
-        let result = buffer.read(0, 5).unwrap();
+        let result = buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
         
         let result = buffer.read(8, 3).unwrap();
@@ -371,31 +379,24 @@ mod tests {
 
     #[test]
     fn test_old_main_fn() {
-        let mut file = File::open("test.txt").unwrap();
+        let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
     
         let mut buffer: StreamBuffer<_, _, SpooledTempFile> = 
-            StreamBuffer::new(bytes, 21);
+            StreamBuffer::new(bytes, LEN);
     
         let result = buffer.read(4, 4).unwrap();
         println!("{:?}", result);
     
-        let result = buffer.read(START, 5).unwrap();
+        let result = buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
     
-        let result = buffer.read(START, 5).unwrap();
+        let result = buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
-    
     
         buffer.file.seek(SeekFrom::Start(START as u64)).unwrap();
-        let mut buf: Vec<u8> = repeat(0).take(10).collect();
-        // let slice = buf.as_mut_slice();
+        let mut buf: Vec<u8> = repeat(ZERO_BYTE).take(10).collect();
     
-        match buffer.file.read(&mut buf) {
-            Ok(n) => println!("Ok {}", n),
-            Err(x) => println!("Err {}", x),
-        }
-        
-        println!("{:?}", buf);
+        buffer.file.read(&mut buf).unwrap();
     }
 }
