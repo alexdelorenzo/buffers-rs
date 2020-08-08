@@ -1,6 +1,6 @@
 #![feature(extend_one)]
 #![feature(trait_alias)]
-use std::io::{self, Write, Read, Seek, SeekFrom, Bytes};
+use std::io::{Write, Read, Seek, SeekFrom, Bytes};
 use std::io::{Error as IoError};
 // use std::error::Error;
 
@@ -210,8 +210,8 @@ mod tests {
     use tempfile::{SpooledTempFile};
     use std::io::{Read, Bytes};
     use std::fs::File;
-    use super::*;
     use std::iter::repeat;
+    use super::*;
 
     const START: usize = 0;
     const LEN: usize = 25;
@@ -223,7 +223,7 @@ mod tests {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
-        let mut stream_buffer = 
+        let stream_buffer = 
           ByteStreamBuf::new(bytes, LEN);
     }
 
@@ -293,7 +293,7 @@ mod tests {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
-        let mut buf = StreamBuffer::from_file(bytes, LEN, temp);
+        let buf = StreamBuffer::from_file(bytes, LEN, temp);
         // test_forward();
     }
 
@@ -386,7 +386,7 @@ mod tests {
             StreamBuffer::new(bytes, LEN);
     
         let result = buffer.read(4, 4).unwrap();
-        println!("{:?}", result);
+        // println!("{:?}", result);
     
         let result = buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
