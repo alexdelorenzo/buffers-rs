@@ -1,8 +1,9 @@
 use tempfile::SpooledTempFile;
 use std::fs::File;
 
+
 use buffer::{StreamBuffer, BufferRead};
-use std::io::{self, Write, Read, Seek, SeekFrom, Bytes};
+use std::io::{Write, Read, Seek, SeekFrom, Bytes};
 
 
 fn main() {

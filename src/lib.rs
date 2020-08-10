@@ -1,9 +1,12 @@
 #![feature(extend_one)]
-#![feature(trait_alias)]
+// #![feature(trait_alias)]
+use std::io::prelude::*;
+use std::io::{BufWriter, BufReader, BufRead};
 use std::io::{Write, Read, Seek, SeekFrom, Bytes};
 use std::io::{Error as IoError};
-// use std::error::Error;
+use std::ops::Range;
 
+// use bufstream::{BufStream, };
 use tempfile::{SpooledTempFile};
 
 const START_INDEX: usize = 0;
@@ -13,6 +16,13 @@ const INCREMENT: usize = 1;
 
 const MAX_SIZE: usize = 5 * 1_024 * 1_024;  // bytes
 
+enum Location {
+    BeforeIndex,
+    Bisected,
+    AtIndex,
+    AfterIndex,
+}
+
 // pub trait FileLike = Read + Seek + Write;
 pub trait FileLike: Read + Seek + Write {}
 impl<T: Read + Seek + Write> FileLike for T {}
@@ -20,9 +30,9 @@ type FileType = Box<dyn FileLike>;
 
 type Byte = u8;
 type ByteBuf = Vec<Byte>;
-type Stream<T, E> = Box<dyn Iterator<Item = Result<T, E>>>;
 type ByteBufResult = Result<ByteBuf, IoError>;
 type ByteStreamBuf<E, F> = StreamBuffer<Byte, E, F>;
+type Stream<T, E> = Box<dyn Iterator<Item = Result<T, E>>>;
 
 pub trait Buffer {}
 
@@ -38,19 +48,15 @@ pub trait BufferRead<O, E>: Buffer {
     fn read(&mut self, offset: usize, size: usize) -> Result<O, E>;
 }
 
-trait BufferReadHelpers: Buffer {
-    fn _chunk_before_index(
-        &mut self, size: usize, offset: usize,
-    ) -> ByteBufResult;
-    fn _chunk_bisected_by_index(
-        &mut self, size: usize, offset: usize,
-    ) -> ByteBufResult;
-    fn _chunk_at_index(
-        &mut self, size: usize
-    ) -> ByteBufResult;
-    fn _chunk_after_index(
-        &mut self, size: usize, offset: usize,
-    ) -> ByteBufResult;
+trait ChunkLocation {
+    fn _chunk_location(&self, offset: usize, end: usize) -> Location;
+}
+
+trait ChunkRead {
+    fn _chunk_before_index(&mut self, offset: usize, size: usize) -> ByteBufResult;
+    fn _chunk_bisected_by_index(&mut self,  offset: usize, size: usize) -> ByteBufResult;
+    fn _chunk_at_index(&mut self, size: usize) -> ByteBufResult;
+    fn _chunk_after_index(&mut self, offset: usize, size: usize) -> ByteBufResult;
 }
 
 pub struct StreamBuffer<T, E, F: FileLike> {
@@ -70,7 +76,7 @@ impl<T, E> StreamBuffer<T, E, FileType> {
         StreamBuffer {
             size,
             stream,
-            file,
+            file: file,
             index: START_INDEX,
         }
     }
@@ -93,12 +99,8 @@ impl<T, E, F: FileLike> BufferCreate<T, E, F> for StreamBuffer<T, E, F> {
     }
 }
 
-impl<E, F: FileLike> BufferReadHelpers for ByteStreamBuf<E, F> {
-    fn _chunk_before_index(
-        &mut self, 
-        size: usize, 
-        offset: usize,
-    ) -> ByteBufResult {
+impl<E, F: FileLike> ChunkRead for ByteStreamBuf<E, F> {
+    fn _chunk_before_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
         let seek_offset = SeekFrom::Start(offset as u64);
         let mut buf = get_sized_vec(size);
 
@@ -108,14 +110,10 @@ impl<E, F: FileLike> BufferReadHelpers for ByteStreamBuf<E, F> {
         return Ok(buf);
     }
 
-    fn _chunk_bisected_by_index(
-        &mut self, 
-        size: usize, 
-        offset: usize, 
-    ) -> ByteBufResult {
+    fn _chunk_bisected_by_index(&mut self,  offset: usize, size: usize) -> ByteBufResult {
         let existing_chunk = self.index - offset;
         let mut buf = 
-            self._chunk_before_index(existing_chunk, offset)?;
+            self._chunk_before_index(offset, existing_chunk)?;
         
         let new_chunk = size - buf.len();
         let new_buf = self._chunk_at_index(new_chunk)?;
@@ -125,7 +123,7 @@ impl<E, F: FileLike> BufferReadHelpers for ByteStreamBuf<E, F> {
     }
 
     fn _chunk_at_index(&mut self, size: usize) -> ByteBufResult {
-        let mut buf = vec_no_capacity();
+        let mut buf = get_no_capacity_vec();
 
         while let Some(Ok(byte)) = self.stream.next() {
             let bytes = &[byte];
@@ -143,12 +141,8 @@ impl<E, F: FileLike> BufferReadHelpers for ByteStreamBuf<E, F> {
         return Ok(buf);
     }
 
-    fn _chunk_after_index(
-        &mut self, 
-        size: usize, 
-        offset: usize, 
-    ) -> ByteBufResult {
-        let mut buf = vec_no_capacity();
+    fn _chunk_after_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
+        let mut buf = get_no_capacity_vec();
         let seek_index = SeekFrom::Start(self.index as u64);
         self.file.seek(seek_index)?;
 
@@ -166,7 +160,22 @@ impl<E, F: FileLike> BufferReadHelpers for ByteStreamBuf<E, F> {
                 return Ok(buf);
             }
         }
+
         return Ok(buf);
+    }
+}
+
+impl<E, F: FileLike> ChunkLocation for ByteStreamBuf<E, F> {
+    fn _chunk_location(&self, offset: usize, end: usize) -> Location {
+        if offset < self.index && end <= self.index {
+            Location::BeforeIndex
+        } else if offset < self.index && self.index < end {
+            Location::Bisected
+        } else if offset == self.index {
+            Location::AtIndex
+        } else {
+            Location::AfterIndex
+        }
     }
 }
 
@@ -174,26 +183,14 @@ impl<E, F: FileLike> BufferRead<ByteBuf, IoError> for ByteStreamBuf<E, F> {
     fn read(&mut self, offset: usize, size: usize) -> ByteBufResult {
         let end = offset + size;
 
-        if offset < self.index && end <= self.index {
-            return self._chunk_before_index(size, offset);
-        } else if offset < self.index && self.index < end {
-            return self._chunk_bisected_by_index(size, offset);
-        } else if offset == self.index {
-            return self._chunk_at_index(size);
-        } else if self.index < offset && offset <= self.size {     
-            return self._chunk_after_index(size, offset);
+        match self._chunk_location(offset, end) {
+            Location::BeforeIndex => self._chunk_before_index(offset, size),
+            Location::Bisected => self._chunk_bisected_by_index(offset, size),
+            Location::AtIndex => self._chunk_at_index(size),
+            Location::AfterIndex => self._chunk_after_index(offset, size)
         }
-
-        Ok(vec![])
     }
 }
-
-// impl<E, F: FileLike> Iterator for ByteStreamBuffer<E, F> {
-//     type Item = ByteBuf;
-//     fn next(&mut self) -> Option<Self::Item> {
-
-//     }
-// }
 
 fn get_sized_vec(size: usize) -> Vec<Byte> {
     let mut vec = Vec::with_capacity(size);
@@ -201,7 +198,7 @@ fn get_sized_vec(size: usize) -> Vec<Byte> {
     vec
 }
 
-fn vec_no_capacity<T>() -> Vec<T> {
+fn get_no_capacity_vec<T>() -> Vec<T> {
     Vec::with_capacity(NO_CAPACITY)
 }
 
@@ -253,6 +250,14 @@ mod tests {
         let result = stream_buffer.read(5, BUF_SIZE).unwrap();
         assert_eq!(result, b"\n3\n4\n");
     }
+    #[test]
+    fn test_vec_iter() {
+        let file = File::open(TEST_FILE).unwrap();
+        let bytes = Box::new(file.bytes());
+        let vec: Vec<Result<u8, IoError>> = bytes.collect();
+        // let mut stream_buffer = 
+        //   StreamBuffer::new(Box::new(vec.item()), LEN);    
+    }
 
     #[test]
     fn test_stutter() {
@@ -294,7 +299,6 @@ mod tests {
         let bytes = Box::new(file.bytes());
 
         let buf = StreamBuffer::from_file(bytes, LEN, temp);
-        // test_forward();
     }
 
     #[test]
@@ -386,7 +390,6 @@ mod tests {
             StreamBuffer::new(bytes, LEN);
     
         let result = buffer.read(4, 4).unwrap();
-        // println!("{:?}", result);
     
         let result = buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
