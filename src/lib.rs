@@ -4,7 +4,7 @@ use std::io::prelude::*;
 use std::io::{BufWriter, BufReader, BufRead};
 use std::io::{Write, Read, Seek, SeekFrom, Bytes};
 use std::io::{Error as IoError};
-use std::ops::Range;
+// use std::ops::Range;
 
 // use bufstream::{BufStream, };
 use tempfile::{SpooledTempFile};
@@ -30,76 +30,60 @@ type FileType = Box<dyn FileLike>;
 
 type Byte = u8;
 type ByteBuf = Vec<Byte>;
+type ByteResult = Result<Byte, IoError>;
 type ByteBufResult = Result<ByteBuf, IoError>;
-type ByteStreamBuf<E, F> = StreamBuffer<Byte, E, F>;
-type Stream<T, E> = Box<dyn Iterator<Item = Result<T, E>>>;
+type ByteStreamBuf<F> = StreamBuffer<ByteResult, F>;
+type Stream<T> = Box<dyn Iterator<Item = T>>;
 
 pub trait Buffer {}
 
-pub trait BufferCreate<T, E, F: FileLike>: Buffer {
+pub trait BufferCreate<T, F: FileLike>: Buffer {
     fn from_file(
-        stream: Stream<T, E>, 
+        stream: Stream<T>, 
         size: usize, 
         file: F
-    ) -> StreamBuffer<T, E, F>;
+    ) -> StreamBuffer<T, F>;
 }
 
-pub trait BufferRead<O, E>: Buffer {
-    fn read(&mut self, offset: usize, size: usize) -> Result<O, E>;
+pub trait BufferRead<T>: Buffer {
+    fn read(&mut self, offset: usize, size: usize) -> T;
 }
 
 trait ChunkLocation {
     fn _chunk_location(&self, offset: usize, end: usize) -> Location;
 }
 
-trait ChunkRead {
-    fn _chunk_before_index(&mut self, offset: usize, size: usize) -> ByteBufResult;
-    fn _chunk_bisected_by_index(&mut self,  offset: usize, size: usize) -> ByteBufResult;
-    fn _chunk_at_index(&mut self, size: usize) -> ByteBufResult;
-    fn _chunk_after_index(&mut self, offset: usize, size: usize) -> ByteBufResult;
+trait ChunkRead<T> {
+    fn _chunk_before_index(&mut self, offset: usize, size: usize) -> T;
+    fn _chunk_bisected_by_index(&mut self,  offset: usize, size: usize) -> T;
+    fn _chunk_at_index(&mut self, size: usize) -> T;
+    fn _chunk_after_index(&mut self, offset: usize, size: usize) -> T;
 }
 
-pub struct StreamBuffer<T, E, F: FileLike> {
+pub struct StreamBuffer<T, F: FileLike> {
     pub size: usize,
     pub index: usize,
-    pub stream: Stream<T, E>,
+    pub stream: Stream<T>,
     pub file: F,
 }
 
-impl<T, E> StreamBuffer<T, E, FileType> {
-    pub fn new(
-        stream: Stream<T, E>, 
-        size: usize,
-    ) -> StreamBuffer<T, E, SpooledTempFile> {
+impl<T> StreamBuffer<T, FileType> {
+    pub fn new(stream: Stream<T>, size: usize) -> StreamBuffer<T, SpooledTempFile> {
         let file = SpooledTempFile::new(MAX_SIZE);
 
-        StreamBuffer {
-            size,
-            stream,
-            file: file,
-            index: START_INDEX,
-        }
+        StreamBuffer { size, stream, file, index: START_INDEX }
     }
 }
 
-impl<T, E, F: FileLike> Buffer for StreamBuffer<T, E, F> {}
+impl<T, F: FileLike> Buffer for StreamBuffer<T, F> {}
 
-impl<T, E, F: FileLike> BufferCreate<T, E, F> for StreamBuffer<T, E, F> {
-    fn from_file(
-        stream: Stream<T, E>, 
-        size: usize,
-        file: F,
-    ) -> StreamBuffer<T, E, F> {
-        StreamBuffer {
-            size,
-            stream,
-            file,
-            index: START_INDEX,
-        }
+impl<T, F: FileLike> BufferCreate<T, F> for StreamBuffer<T, F> {
+    fn from_file(stream: Stream<T>, size: usize, file: F) -> StreamBuffer<T, F> {
+        StreamBuffer { size, stream, file, index: START_INDEX }
     }
 }
 
-impl<E, F: FileLike> ChunkRead for ByteStreamBuf<E, F> {
+impl<F: FileLike> ChunkRead<ByteBufResult> for ByteStreamBuf<F> {
     fn _chunk_before_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
         let seek_offset = SeekFrom::Start(offset as u64);
         let mut buf = sized_vec(size);
@@ -123,6 +107,9 @@ impl<E, F: FileLike> ChunkRead for ByteStreamBuf<E, F> {
     }
 
     fn _chunk_at_index(&mut self, size: usize) -> ByteBufResult {
+        let seek_offset = SeekFrom::Start(self.index as u64);
+        self.file.seek(seek_offset)?;
+
         let mut buf = no_capacity_vec();
 
         while let Some(Ok(byte)) = self.stream.next() {
@@ -142,9 +129,10 @@ impl<E, F: FileLike> ChunkRead for ByteStreamBuf<E, F> {
     }
 
     fn _chunk_after_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
-        let mut buf = no_capacity_vec();
         let seek_index = SeekFrom::Start(self.index as u64);
         self.file.seek(seek_index)?;
+
+        let mut buf = no_capacity_vec();
 
         while let Some(Ok(byte)) = self.stream.next()  {
             let bytes = &[byte];
@@ -157,7 +145,7 @@ impl<E, F: FileLike> ChunkRead for ByteStreamBuf<E, F> {
 
             if buf.len() >= size {
                 buf.truncate(size);
-                return Ok(buf);
+                break;
             }
         }
 
@@ -165,7 +153,7 @@ impl<E, F: FileLike> ChunkRead for ByteStreamBuf<E, F> {
     }
 }
 
-impl<E, F: FileLike> ChunkLocation for ByteStreamBuf<E, F> {
+impl<T, F: FileLike> ChunkLocation for StreamBuffer<T ,F> {
     fn _chunk_location(&self, offset: usize, end: usize) -> Location {
         if offset < self.index && end <= self.index {
             Location::BeforeIndex
@@ -179,7 +167,7 @@ impl<E, F: FileLike> ChunkLocation for ByteStreamBuf<E, F> {
     }
 }
 
-impl<E, F: FileLike> BufferRead<ByteBuf, IoError> for ByteStreamBuf<E, F> {
+impl<F: FileLike> BufferRead<ByteBufResult> for ByteStreamBuf<F> {
     fn read(&mut self, offset: usize, size: usize) -> ByteBufResult {
         let end = offset + size;
 
@@ -254,7 +242,7 @@ mod tests {
     fn test_vec_iter() {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
-        let vec: Vec<Result<u8, IoError>> = bytes.collect();
+        let vec: Vec<ByteResult> = bytes.collect();
         // let mut stream_buffer = 
         //   StreamBuffer::new(Box::new(vec.item()), LEN);    
     }
@@ -386,7 +374,7 @@ mod tests {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
     
-        let mut buffer: StreamBuffer<_, _, SpooledTempFile> = 
+        let mut buffer: StreamBuffer<_, SpooledTempFile> = 
             StreamBuffer::new(bytes, LEN);
     
         let result = buffer.read(4, 4).unwrap();

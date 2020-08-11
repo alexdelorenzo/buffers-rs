@@ -11,6 +11,6 @@ fn main() {
     let bytes = Box::new(file.bytes());
 
     let mut buffer = StreamBuffer::new(bytes, 21);
-    buffer.read(0, 5).unwrap();
+    // buffer.read(0, 5).unwrap();
 
 }
