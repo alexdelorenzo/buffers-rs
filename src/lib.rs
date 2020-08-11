@@ -102,7 +102,7 @@ impl<T, E, F: FileLike> BufferCreate<T, E, F> for StreamBuffer<T, E, F> {
 impl<E, F: FileLike> ChunkRead for ByteStreamBuf<E, F> {
     fn _chunk_before_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
         let seek_offset = SeekFrom::Start(offset as u64);
-        let mut buf = get_sized_vec(size);
+        let mut buf = sized_vec(size);
 
         self.file.seek(seek_offset)?;
         self.file.read(&mut buf)?;
@@ -123,7 +123,7 @@ impl<E, F: FileLike> ChunkRead for ByteStreamBuf<E, F> {
     }
 
     fn _chunk_at_index(&mut self, size: usize) -> ByteBufResult {
-        let mut buf = get_no_capacity_vec();
+        let mut buf = no_capacity_vec();
 
         while let Some(Ok(byte)) = self.stream.next() {
             let bytes = &[byte];
@@ -142,7 +142,7 @@ impl<E, F: FileLike> ChunkRead for ByteStreamBuf<E, F> {
     }
 
     fn _chunk_after_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
-        let mut buf = get_no_capacity_vec();
+        let mut buf = no_capacity_vec();
         let seek_index = SeekFrom::Start(self.index as u64);
         self.file.seek(seek_index)?;
 
@@ -192,13 +192,13 @@ impl<E, F: FileLike> BufferRead<ByteBuf, IoError> for ByteStreamBuf<E, F> {
     }
 }
 
-fn get_sized_vec(size: usize) -> Vec<Byte> {
+fn sized_vec(size: usize) -> Vec<Byte> {
     let mut vec = Vec::with_capacity(size);
     vec.resize(size, ZERO_BYTE);
     vec
 }
 
-fn get_no_capacity_vec<T>() -> Vec<T> {
+fn no_capacity_vec<T>() -> Vec<T> {
     Vec::with_capacity(NO_CAPACITY)
 }
 
