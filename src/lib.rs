@@ -1,9 +1,11 @@
 #![feature(extend_one)]
 // #![feature(trait_alias)]
-use std::io::prelude::*;
-use std::io::{BufWriter, BufReader, BufRead};
-use std::io::{Write, Read, Seek, SeekFrom, Bytes};
+// use std::io::prelude::*;
+// use std::io::{BufWriter, BufReader, BufRead};
+use std::io::{Write, Read, Seek, SeekFrom};
 use std::io::{Error as IoError};
+// use std::any::Any;
+// use std::clone::Clone;
 // use std::ops::Range;
 
 // use bufstream::{BufStream, };
@@ -38,11 +40,7 @@ type Stream<T> = Box<dyn Iterator<Item = T>>;
 pub trait Buffer {}
 
 pub trait BufferCreate<T, F: FileLike>: Buffer {
-    fn from_file(
-        stream: Stream<T>, 
-        size: usize, 
-        file: F
-    ) -> StreamBuffer<T, F>;
+    fn from_file(stream: Stream<T>, size: usize, file: F) -> StreamBuffer<T, F>;
 }
 
 pub trait BufferRead<T>: Buffer {
@@ -50,7 +48,7 @@ pub trait BufferRead<T>: Buffer {
 }
 
 trait ChunkLocation {
-    fn _chunk_location(&self, offset: usize, end: usize) -> Location;
+    fn _chunk_location(&self, offset: usize, size: usize) -> Location;
 }
 
 trait ChunkRead<T> {
@@ -65,11 +63,16 @@ pub struct StreamBuffer<T, F: FileLike> {
     pub index: usize,
     pub stream: Stream<T>,
     pub file: F,
+    // reader: BufReader<Box<FileType>>,
+    // writer: BufWriter<Box<FileType>>,
 }
 
 impl<T> StreamBuffer<T, FileType> {
     pub fn new(stream: Stream<T>, size: usize) -> StreamBuffer<T, SpooledTempFile> {
         let file = SpooledTempFile::new(MAX_SIZE);
+        // let file_ref = Box::new(SpooledTempFile::new(MAX_SIZE));
+        // let reader = BufReader::with_capacity(size, file_ref);
+        // let writer = BufWriter::with_capacity(size, file_ref);
 
         StreamBuffer { size, stream, file, index: START_INDEX }
     }
@@ -79,6 +82,10 @@ impl<T, F: FileLike> Buffer for StreamBuffer<T, F> {}
 
 impl<T, F: FileLike> BufferCreate<T, F> for StreamBuffer<T, F> {
     fn from_file(stream: Stream<T>, size: usize, file: F) -> StreamBuffer<T, F> {
+        // let file_ref = Box::new(file);
+        // let reader = BufReader::with_capacity(size, file_ref);
+        // let writer = BufWriter::with_capacity(size, file_ref);
+
         StreamBuffer { size, stream, file, index: START_INDEX }
     }
 }
@@ -154,7 +161,9 @@ impl<F: FileLike> ChunkRead<ByteBufResult> for ByteStreamBuf<F> {
 }
 
 impl<T, F: FileLike> ChunkLocation for StreamBuffer<T ,F> {
-    fn _chunk_location(&self, offset: usize, end: usize) -> Location {
+    fn _chunk_location(&self, offset: usize, size: usize) -> Location {
+        let end = offset + size;
+
         if offset < self.index && end <= self.index {
             Location::BeforeIndex
         } else if offset < self.index && self.index < end {
@@ -169,9 +178,7 @@ impl<T, F: FileLike> ChunkLocation for StreamBuffer<T ,F> {
 
 impl<F: FileLike> BufferRead<ByteBufResult> for ByteStreamBuf<F> {
     fn read(&mut self, offset: usize, size: usize) -> ByteBufResult {
-        let end = offset + size;
-
-        match self._chunk_location(offset, end) {
+        match self._chunk_location(offset, size) {
             Location::BeforeIndex => self._chunk_before_index(offset, size),
             Location::Bisected => self._chunk_bisected_by_index(offset, size),
             Location::AtIndex => self._chunk_at_index(size),
@@ -193,7 +200,7 @@ fn no_capacity_vec<T>() -> Vec<T> {
 #[cfg(test)]
 mod tests {
     use tempfile::{SpooledTempFile};
-    use std::io::{Read, Bytes};
+    use std::io::{Read};
     use std::fs::File;
     use std::iter::repeat;
     use super::*;
