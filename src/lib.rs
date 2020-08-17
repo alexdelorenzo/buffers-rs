@@ -70,10 +70,6 @@ pub struct StreamBuffer<T, F: FileLike> {
 impl<T> StreamBuffer<T, FileType> {
     pub fn new(stream: Stream<T>, size: usize) -> StreamBuffer<T, SpooledTempFile> {
         let file = SpooledTempFile::new(MAX_SIZE);
-        // let file_ref = Box::new(SpooledTempFile::new(MAX_SIZE));
-        // let reader = BufReader::with_capacity(size, file_ref);
-        // let writer = BufWriter::with_capacity(size, file_ref);
-
         StreamBuffer { size, stream, file, index: START_INDEX }
     }
 }
@@ -82,10 +78,6 @@ impl<T, F: FileLike> Buffer for StreamBuffer<T, F> {}
 
 impl<T, F: FileLike> BufferCreate<T, F> for StreamBuffer<T, F> {
     fn from_file(stream: Stream<T>, size: usize, file: F) -> StreamBuffer<T, F> {
-        // let file_ref = Box::new(file);
-        // let reader = BufReader::with_capacity(size, file_ref);
-        // let writer = BufWriter::with_capacity(size, file_ref);
-
         StreamBuffer { size, stream, file, index: START_INDEX }
     }
 }
@@ -98,19 +90,19 @@ impl<F: FileLike> ChunkRead<ByteBufResult> for ByteStreamBuf<F> {
         self.file.seek(seek_offset)?;
         self.file.read(&mut buf)?;
 
-        return Ok(buf);
+        Ok(buf)
     }
 
-    fn _chunk_bisected_by_index(&mut self,  offset: usize, size: usize) -> ByteBufResult {
-        let existing_chunk = self.index - offset;
+    fn _chunk_bisected_by_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
+        let existing_size = self.index - offset;
         let mut buf = 
-            self._chunk_before_index(offset, existing_chunk)?;
+            self._chunk_before_index(offset, existing_size)?;
         
-        let new_chunk = size - buf.len();
-        let new_buf = self._chunk_at_index(new_chunk)?;
+        let new_size = size - buf.len();
+        let new_buf = self._chunk_at_index(new_size)?;
         buf.extend(new_buf);
 
-        return Ok(buf);
+        Ok(buf)
     }
 
     fn _chunk_at_index(&mut self, size: usize) -> ByteBufResult {
@@ -132,7 +124,7 @@ impl<F: FileLike> ChunkRead<ByteBufResult> for ByteStreamBuf<F> {
             }
         }
 
-        return Ok(buf);
+        Ok(buf)
     }
 
     fn _chunk_after_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
@@ -156,7 +148,7 @@ impl<F: FileLike> ChunkRead<ByteBufResult> for ByteStreamBuf<F> {
             }
         }
 
-        return Ok(buf);
+        Ok(buf)
     }
 }
 
@@ -211,16 +203,16 @@ mod tests {
     const BUF_SIZE: usize = 5;
 
     #[test]
-    fn test_create() {
+    fn create() {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
-        let stream_buffer = 
+        let _stream_buffer = 
           ByteStreamBuf::new(bytes, LEN);
     }
 
     #[test]
-    fn test_chunk_from_0() {
+    fn chunk_from_0() {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
@@ -232,7 +224,7 @@ mod tests {
     }
 
     #[test]
-    fn test_forward() {
+    fn forward() {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
@@ -245,17 +237,9 @@ mod tests {
         let result = stream_buffer.read(5, BUF_SIZE).unwrap();
         assert_eq!(result, b"\n3\n4\n");
     }
-    #[test]
-    fn test_vec_iter() {
-        let file = File::open(TEST_FILE).unwrap();
-        let bytes = Box::new(file.bytes());
-        let vec: Vec<ByteResult> = bytes.collect();
-        // let mut stream_buffer = 
-        //   StreamBuffer::new(Box::new(vec.item()), LEN);    
-    }
 
     #[test]
-    fn test_stutter() {
+    fn stutter() {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
@@ -271,10 +255,11 @@ mod tests {
         assert_eq!(result, slice);
 
         // let result = stream_buffer.read(4, 4).unwrap();
-        stream_buffer.file.seek(SeekFrom::Start(0usize as u64)).unwrap();
+        stream_buffer.file.seek(SeekFrom::Start(0u64)).unwrap();
         // assert_eq!(stream_buffer.index, 8);
 
         let result = stream_buffer.read(4, 4).unwrap();
+        // test type casting as well
         stream_buffer.file.seek(SeekFrom::Start(0usize as u64)).unwrap();
         assert_eq!(stream_buffer.index, 8);
 
@@ -287,17 +272,17 @@ mod tests {
     }
 
     #[test]
-    fn test_inject_file_dependency() {
+    fn inject_file_dependency() {
         let temp = SpooledTempFile::new(MAX_SIZE);
 
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
-        let buf = StreamBuffer::from_file(bytes, LEN, temp);
+        let _buf = StreamBuffer::from_file(bytes, LEN, temp);
     }
 
     #[test]
-    fn test_backward() {
+    fn backwards() {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
@@ -316,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn test_same_chunk_from_0() {
+    fn same_chunk_from_0() {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
 
@@ -331,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn test_forward_then_extend_from_0() {
+    fn forward_then_extend_from_0() {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
     
@@ -349,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    fn test_forward_skip_ahead() {
+    fn forward_skip_ahead() {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
     
@@ -364,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn test_tempfile() {
+    fn tempfile() {
         let mut temp = SpooledTempFile::new(MAX_SIZE);
         let data: [u8; 10] = 
           [0, 1, 2, 3, 4,
@@ -377,14 +362,22 @@ mod tests {
     }
 
     #[test]
-    fn test_old_main_fn() {
+    fn vec_iter() {
+        let file = File::open(TEST_FILE).unwrap();
+        let bytes = Box::new(file.bytes());
+        let _vec: Vec<ByteResult> = bytes.collect(); 
+    }
+
+    // moved main() to a test
+    #[test]
+    fn old_main_fn() {
         let file = File::open(TEST_FILE).unwrap();
         let bytes = Box::new(file.bytes());
     
         let mut buffer: StreamBuffer<_, SpooledTempFile> = 
             StreamBuffer::new(bytes, LEN);
     
-        let result = buffer.read(4, 4).unwrap();
+        let _result = buffer.read(4, 4).unwrap();
     
         let result = buffer.read(START, BUF_SIZE).unwrap();
         assert_eq!(result, b"0\n1\n2");
