@@ -1,5 +1,6 @@
-#![feature(extend_one)]
-// #![feature(trait_alias)]
+#![feature(extend_one, box_syntax)]
+// #![feature(type_alias_impl_trait)]
+#![feature(trait_alias)]
 // use std::io::prelude::*;
 // use std::io::{BufWriter, BufReader, BufRead};
 use std::io::{Write, Read, Seek, SeekFrom};
@@ -25,17 +26,17 @@ enum Location {
     AfterIndex,
 }
 
-// pub trait FileLike = Read + Seek + Write;
-pub trait FileLike: Read + Seek + Write {}
-impl<T: Read + Seek + Write> FileLike for T {}
-type FileType = Box<dyn FileLike>;
+pub trait FileLike = Read + Seek + Write;
+// pub trait FileLike: Read + Seek + Write {}
+// impl<T: Read + Seek + Write> FileLike for T {}
 
 type Byte = u8;
 type ByteBuf = Vec<Byte>;
 type ByteResult = Result<Byte, IoError>;
-type ByteBufResult = Result<ByteBuf, IoError>;
+type BufResult = Result<ByteBuf, IoError>;
 type ByteStreamBuf<F> = StreamBuffer<ByteResult, F>;
 type Stream<T> = Box<dyn Iterator<Item = T>>;
+
 
 pub trait Buffer {}
 
@@ -67,7 +68,7 @@ pub struct StreamBuffer<T, F: FileLike> {
     // writer: BufWriter<Box<FileType>>,
 }
 
-impl<T> StreamBuffer<T, FileType> {
+impl<T> StreamBuffer<T, SpooledTempFile> {
     pub fn new(stream: Stream<T>, size: usize) -> StreamBuffer<T, SpooledTempFile> {
         let file = SpooledTempFile::new(MAX_SIZE);
         StreamBuffer { size, stream, file, index: START_INDEX }
@@ -82,8 +83,8 @@ impl<T, F: FileLike> BufferCreate<T, F> for StreamBuffer<T, F> {
     }
 }
 
-impl<F: FileLike> ChunkRead<ByteBufResult> for ByteStreamBuf<F> {
-    fn _chunk_before_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
+impl<F: FileLike> ChunkRead<BufResult> for ByteStreamBuf<F> {
+    fn _chunk_before_index(&mut self, offset: usize, size: usize) -> BufResult {
         let seek_offset = SeekFrom::Start(offset as u64);
         let mut buf = sized_vec(size);
 
@@ -93,7 +94,7 @@ impl<F: FileLike> ChunkRead<ByteBufResult> for ByteStreamBuf<F> {
         Ok(buf)
     }
 
-    fn _chunk_bisected_by_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
+    fn _chunk_bisected_by_index(&mut self, offset: usize, size: usize) -> BufResult {
         let existing_size = self.index - offset;
         let mut buf = 
             self._chunk_before_index(offset, existing_size)?;
@@ -105,7 +106,7 @@ impl<F: FileLike> ChunkRead<ByteBufResult> for ByteStreamBuf<F> {
         Ok(buf)
     }
 
-    fn _chunk_at_index(&mut self, size: usize) -> ByteBufResult {
+    fn _chunk_at_index(&mut self, size: usize) -> BufResult {
         let seek_offset = SeekFrom::Start(self.index as u64);
         self.file.seek(seek_offset)?;
 
@@ -127,7 +128,7 @@ impl<F: FileLike> ChunkRead<ByteBufResult> for ByteStreamBuf<F> {
         Ok(buf)
     }
 
-    fn _chunk_after_index(&mut self, offset: usize, size: usize) -> ByteBufResult {
+    fn _chunk_after_index(&mut self, offset: usize, size: usize) -> BufResult {
         let seek_index = SeekFrom::Start(self.index as u64);
         self.file.seek(seek_index)?;
 
@@ -168,8 +169,8 @@ impl<T, F: FileLike> ChunkLocation for StreamBuffer<T ,F> {
     }
 }
 
-impl<F: FileLike> BufferRead<ByteBufResult> for ByteStreamBuf<F> {
-    fn read(&mut self, offset: usize, size: usize) -> ByteBufResult {
+impl<F: FileLike> BufferRead<BufResult> for ByteStreamBuf<F> {
+    fn read(&mut self, offset: usize, size: usize) -> BufResult {
         match self._chunk_location(offset, size) {
             Location::BeforeIndex => self._chunk_before_index(offset, size),
             Location::Bisected => self._chunk_bisected_by_index(offset, size),
@@ -389,5 +390,9 @@ mod tests {
         let mut buf: Vec<u8> = repeat(ZERO_BYTE).take(10).collect();
     
         buffer.file.read(&mut buf).unwrap();
+        let bx = Box::new(buf.iter());
+
+        let mut buf2 = StreamBuffer::new(bx, buf.len());
+        drop(buf2);
     }
 }
