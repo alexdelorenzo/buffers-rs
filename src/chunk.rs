@@ -1,9 +1,11 @@
-use std::io::{SeekFrom};
-
+// use super::*;
 use super::buf::{StreamBuffer, ByteStreamBuf};
 use super::constants::{ZERO_BYTE, INCREMENT};
-use super::types::{FileLike, BufResult};
-use super::utils::{no_capacity_vec, sized_vec};
+use super::types::{FileLike, BufResult,};
+use super::utils::*;
+use std::io::{Read, SeekFrom};
+
+
 
 pub enum Location {
     BeforeIndex,

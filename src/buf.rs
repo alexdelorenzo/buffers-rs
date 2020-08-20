@@ -11,7 +11,6 @@ pub trait Buffer {}
 
 pub type ByteStreamBuf<F> = StreamBuffer<ByteResult, F>;
 
-
 pub struct StreamBuffer<T, F: FileLike> {
     pub size: usize,
     pub index: usize,

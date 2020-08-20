@@ -16,14 +16,12 @@ mod tests {
     use std::fs::File;
     use std::iter::repeat;
 
-    use itertools::Itertools;
+    // use itertools::Itertools;
     use tempfile::{SpooledTempFile};
 
-    use constants::{ZERO_BYTE, MAX_SIZE};
-    use buf::{StreamBuffer, ByteStreamBuf, BufferRead, BufferCreate};
-    use types::*;
-
-    use super::*;
+    use super::constants::{ZERO_BYTE, MAX_SIZE};
+    use super::buf::{StreamBuffer, ByteStreamBuf, BufferRead, BufferCreate};
+    use super::types::*;
 
     const START: usize = 0;
     const LEN: usize = 25;
