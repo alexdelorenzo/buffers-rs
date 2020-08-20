@@ -1,40 +1,28 @@
-#![feature(extend_one, box_syntax)]
 #![feature(type_alias_impl_trait)]
 #![feature(trait_alias)]
-// use std::io::prelude::*;
-// use std::io::{BufWriter, BufReader, BufRead};
+#![feature(extend_one)]
+
 mod buf;
 mod chunk;
 mod constants;
 mod types;
 mod utils;
-use std::fmt::Display;
-// use std::io::{Write, Read, Seek, SeekFrom};
-use std::io::{SeekFrom};
-// use bufstream::{BufStream, };
-use tempfile::{SpooledTempFile};
-use itertools::Itertools;
 
-// mod buffer;
 pub use buf::StreamBuffer;
-use buf::*;
-use constants::{ZERO_BYTE, START_INDEX, INCREMENT, MAX_SIZE};
-use chunk::{Location, ChunkLocation, ChunkRead};
-use types::*;
-use utils::*;
-
-fn iter_boxed<T: Display>(iter: Stream<T>) {
-    for x in iter {
-        println!("{}", x);
-    }
-}
 
 #[cfg(test)]
 mod tests {
-    use tempfile::{SpooledTempFile};
-    use std::io::{Read};
+    use std::io::{Read, SeekFrom};
     use std::fs::File;
     use std::iter::repeat;
+
+    use itertools::Itertools;
+    use tempfile::{SpooledTempFile};
+
+    use constants::{ZERO_BYTE, MAX_SIZE};
+    use buf::{StreamBuffer, ByteStreamBuf, BufferRead, BufferCreate};
+    use types::*;
+
     use super::*;
 
     const START: usize = 0;

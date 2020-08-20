@@ -5,7 +5,6 @@ use super::constants::{ZERO_BYTE, INCREMENT};
 use super::types::{FileLike, BufResult};
 use super::utils::{no_capacity_vec, sized_vec};
 
-
 pub enum Location {
     BeforeIndex,
     Bisected,

@@ -1,7 +1,5 @@
-#![feature(type_alias_impl_trait)]
-#![feature(trait_alias)]
-use std::io::{Error as IoError, Result as IoResult};
-use std::io::{Write, Read, Seek, SeekFrom};
+pub use std::io::{Write, Read, Seek, SeekFrom};
+pub use std::io::{Error as IoError, Result as IoResult};
 
 pub trait FileLike = Read + Seek + Write;
 // pub trait FileLike: Read + Seek + Write {}
